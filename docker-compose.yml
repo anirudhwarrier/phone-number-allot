@@ -1,0 +1,48 @@
+version: '3.7'
+
+services: 
+    postgres:
+        image: postgres:10.5
+        command: ["postgres", "-c", "log_statement=all", "-c", "log_destination=stderr"]
+        deploy:
+            resources:
+                limits:
+                    cpus: '1'
+                    memory: 1G
+        volumes:
+        - ./docker-seed/init.sql:/docker-entrypoint-initdb.d/init.sql
+        environment:
+        - POSTGRES_USER=${POSTGRES_USER:-pna_admin}
+        - POSTGRES_PASSWORD=${PGPASSWORD:-pass}
+        - POSTGRES_DB=pna_${APP_ENV:-prod}
+        ports:
+        - "5432:5432"
+        healthcheck:
+            test: ["CMD", "pg_isready", "-d", "pna_${APP_ENV:-prod}", "-U", "${POSTGRES_USER:-pna_admin}"]
+            start_period: 1s0s
+            interval: 10s
+            timeout: 5s
+            retries: 5
+    migrate:
+        build: 
+            context: ./
+        image: phone-number-allot:v1
+        environment: 
+            - DATABASE_URL=postgresql://pna_admin:pass@postgres:5432/pna_${APP_ENV:-prod}
+            - APP_ENV=${APP_ENV:-prod}
+        entrypoint: ['python','manage.py','migrate']
+        depends_on: 
+            - postgres
+
+    app:
+        build: 
+            context: ./
+        image: phone-number-allot:v1
+        ports: 
+        - "5000:5000"
+        environment: 
+        - DATABASE_URL=postgresql://pna_admin:pass@postgres:5432/pna_${APP_ENV:-prod}
+        - APP_ENV=${APP_ENV:-prod}
+        depends_on: 
+            - postgres
+            - migrate
